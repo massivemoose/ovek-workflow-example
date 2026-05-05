@@ -37,12 +37,12 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/massivemoose/ovek-signup-example
-          # The Dockerfile is the image recipe; Buildx builds it for linux/amd64
-          # and GHCR stores the resulting OCI-compatible container image.
+          # The Dockerfile is the image recipe; Buildx builds it for amd64 and
+          # arm64, then GHCR stores the resulting OCI-compatible manifest list.
