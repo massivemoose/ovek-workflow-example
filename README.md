@@ -29,7 +29,7 @@ Published image:
 ghcr.io/massivemoose/ovek-signup-example:latest
 ```
 
-This repo uses a `Dockerfile` as the build recipe. The published artifact is an OCI-compatible container image that Ovek can pull and run.
+This repo uses a `Dockerfile` as the build recipe. The published artifact is an OCI-compatible multi-platform image for `linux/amd64` and `linux/arm64` that Ovek can pull and run.
 
 ## Run With Ovek
 
@@ -92,6 +92,8 @@ ghcr.io/massivemoose/ovek-signup-example:latest
 ghcr.io/massivemoose/ovek-signup-example:<git-sha>
 ```
 
+Each tag points to a multi-platform manifest with `linux/amd64` and `linux/arm64` images.
+
 To publish manually:
 
 1. Open the repo on GitHub.
@@ -110,10 +112,32 @@ podman logout ghcr.io
 podman pull ghcr.io/massivemoose/ovek-signup-example:latest
 ```
 
-On Apple Silicon, request the target platform explicitly:
+To verify a specific platform explicitly:
 
 ```bash
 podman pull --platform linux/amd64 ghcr.io/massivemoose/ovek-signup-example:latest
+```
+
+```bash
+podman pull --platform linux/arm64 ghcr.io/massivemoose/ovek-signup-example:latest
+```
+
+Docker uses the same pattern:
+
+```bash
+docker logout ghcr.io
+```
+
+```bash
+docker pull ghcr.io/massivemoose/ovek-signup-example:latest
+```
+
+```bash
+docker pull --platform linux/amd64 ghcr.io/massivemoose/ovek-signup-example:latest
+```
+
+```bash
+docker pull --platform linux/arm64 ghcr.io/massivemoose/ovek-signup-example:latest
 ```
 
 ## Local Development
@@ -143,13 +167,23 @@ go test ./...
 Build the local image:
 
 ```bash
+podman build -t ovek-signup-example:local .
+```
+
+To test a specific published platform locally:
+
+```bash
 podman build --platform linux/amd64 -t ovek-signup-example:local .
+```
+
+```bash
+podman build --platform linux/arm64 -t ovek-signup-example:local .
 ```
 
 Run it against a local PocketBase instance:
 
 ```bash
-podman run --platform linux/amd64 --rm -p 8080:8080 \
+podman run --rm -p 8080:8080 \
   -e PORT=8080 \
   -e POCKETBASE_URL=http://host.containers.internal:8090 \
   -e PB_SUPERUSER_EMAIL=<email> \
@@ -162,11 +196,11 @@ Expected: the app starts, authenticates to PocketBase, ensures the `signups` col
 Docker works too:
 
 ```bash
-docker build --platform linux/amd64 -t ovek-signup-example:local .
+docker build -t ovek-signup-example:local .
 ```
 
 ```bash
-docker run --platform linux/amd64 --rm -p 8080:8080 \
+docker run --rm -p 8080:8080 \
   -e PORT=8080 \
   -e POCKETBASE_URL=http://host.docker.internal:8090 \
   -e PB_SUPERUSER_EMAIL=<email> \
