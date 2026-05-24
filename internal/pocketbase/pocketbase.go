@@ -271,7 +271,6 @@ func (pb *Client) ListSignups(ctx context.Context) ([]workflow.Signup, error) {
 		values := url.Values{}
 		values.Set("page", fmt.Sprint(page))
 		values.Set("perPage", "200")
-		values.Set("sort", "created")
 
 		var list listResponse[workflow.Signup]
 		if err := pb.getList(ctx, token, signupsCollection, values, &list); err != nil {
@@ -383,7 +382,8 @@ func (pb *Client) getList(ctx context.Context, token string, collectionName stri
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("list %s returned HTTP %d", collectionName, resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		return fmt.Errorf("list %s returned HTTP %d: %s", collectionName, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
