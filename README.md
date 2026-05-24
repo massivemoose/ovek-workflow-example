@@ -1,159 +1,159 @@
-# Ovek Signup Capsule
+# Ovek Workflow Example
 
-A tiny Go signup app packaged as an Ovek capsule. It runs behind Ovek, writes email signups to a per-project PocketBase sidecar, and keeps persistent data local to the server running your app.
+A tiny Go example with two OCI images:
 
-![Signup page](images/signup.png)
+- `ghcr.io/massivemoose/ovek-workflow-example-app:latest`
+- `ghcr.io/massivemoose/ovek-workflow-example-digest:latest`
+
+The app keeps the original PocketBase-backed signup behavior. The `digest` workflow is a one-shot image that reads signup records, calculates total and new signups since the previous successful digest, and writes the workflow result back to PocketBase. The homepage renders the signup form first and a server-rendered "Recent workflow results" panel below it.
+
+The browser never receives PocketBase credentials.
 
 ## What This Demonstrates
 
-- Publishing a Go app as an OCI-compatible capsule image on GHCR.
-- Running that image with `ovek run`.
-- Using Ovek-managed persistent data through a per-project PocketBase sidecar.
-- Injecting PocketBase credentials into the app as project secrets.
-- Keeping the app portable: it only depends on runtime env vars.
+- Running a normal Ovek app capsule with `ovek run`.
+- Running an async one-shot workflow image with `ovek workflow run`.
+- Optionally scheduling that workflow with `ovek workflow set --schedule`.
+- Sharing Ovek-injected PocketBase app secrets between app and workflow containers.
+- Persisting workflow results in PocketBase so the app can display them later.
 
-The app reads:
+Both images read:
 
-- `PORT`, default `8080`
 - `POCKETBASE_URL`
 - `PB_SUPERUSER_EMAIL`
 - `PB_SUPERUSER_PASSWORD`
 
-On startup, it authenticates to PocketBase, ensures the `signups` collection exists, and serves the signup form.
+The app also reads `PORT`, default `8080`. The workflow also reads `OVEK_WORKFLOW_RUN_ID`.
 
-## Capsule Image
+## Images
 
-Published image:
+The app image is built from `Dockerfile`:
 
 ```text
-ghcr.io/massivemoose/ovek-signup-example:latest
+ghcr.io/massivemoose/ovek-workflow-example-app:latest
 ```
 
-This repo uses a `Dockerfile` as the build recipe. The published artifact is an OCI-compatible multi-platform image for `linux/amd64` and `linux/arm64` that Ovek can pull and run.
+The digest workflow image is built from `Dockerfile.workflow`:
 
-## Run With Ovek
+```text
+ghcr.io/massivemoose/ovek-workflow-example-digest:latest
+```
+
+GitHub Actions publishes both images as multi-platform OCI-compatible images for `linux/amd64` and `linux/arm64`.
+
+## Manual Workflow Run
 
 Start from an Ovek server where the CLI is authenticated.
 
-Initialize the project's PocketBase sidecar and app secrets:
+1. Initialize the project's PocketBase sidecar and app secrets:
 
 ```bash
-ovek pb init signup-demo --app-secrets
+ovek db init workflow-demo --app-secrets
 ```
 
-Run the capsule:
+2. Run the app capsule:
 
 ```bash
-ovek run signup-demo ghcr.io/massivemoose/ovek-signup-example:latest
+ovek run workflow-demo ghcr.io/massivemoose/ovek-workflow-example-app:latest
 ```
 
-Check status:
-
-```bash
-ovek status signup-demo
-```
-
-Open the app:
+3. Open the app:
 
 ```text
-http://signup-demo.localhost/
+http://workflow-demo.localhost/
 ```
 
-Submit an email address. A successful signup redirects to `/success`.
+4. Submit 2-3 email signups.
 
-## Inspect PocketBase
-
-Check the managed sidecar:
+5. Register the digest workflow image:
 
 ```bash
-ovek pb status signup-demo
+ovek workflow set workflow-demo digest --image ghcr.io/massivemoose/ovek-workflow-example-digest:latest
 ```
 
-Open a local tunnel:
+6. Run the workflow:
 
 ```bash
-ovek pb tunnel signup-demo --listen 127.0.0.1:8091
+ovek workflow run workflow-demo digest
 ```
 
-Then open:
+7. Check workflow status:
+
+```bash
+ovek workflow status workflow-demo digest
+```
+
+8. Read logs after substituting the run ID from status:
+
+```bash
+ovek workflow logs workflow-demo <RUN_ID> --no-follow
+```
+
+9. Refresh the app page:
 
 ```text
-http://127.0.0.1:8091/_/
+http://workflow-demo.localhost/
 ```
 
-Expected: after the app starts, the `signups` collection exists and submitted emails appear as records. Use your `PB_SUPERUSER_` credentials to log in.
+Success criteria:
 
-## Publish The Image
+- The workflow run reaches `succeeded`.
+- Logs show total and new signup counts.
+- The app UI shows a recent digest result.
+- Running the workflow again without new signups creates another result with `new_signups=0`.
+- Adding another signup and rerunning creates a result with `new_signups=1`.
 
-The GitHub Actions workflow publishes:
+## Optional Scheduled Workflow
 
-```text
-ghcr.io/massivemoose/ovek-signup-example:latest
-ghcr.io/massivemoose/ovek-signup-example:<git-sha>
-```
-
-Each tag points to a multi-platform manifest with `linux/amd64` and `linux/arm64` images.
-
-To publish manually:
-
-1. Open the repo on GitHub.
-2. Go to **Actions**.
-3. Run **Publish OCI image to GHCR** from `main`.
-
-After the first publish, make the GHCR package public in package settings so Ovek servers can pull it without registry credentials.
-
-Verify anonymous pull:
+Register the same workflow with an hourly schedule:
 
 ```bash
-podman logout ghcr.io
+ovek workflow set workflow-demo digest \
+  --image ghcr.io/massivemoose/ovek-workflow-example-digest:latest \
+  --schedule '@hourly'
 ```
 
-```bash
-podman pull ghcr.io/massivemoose/ovek-signup-example:latest
-```
+The app does not trigger workflows directly. That is intentional for Ovek V1. See [docs/future-workflow-triggers.md](docs/future-workflow-triggers.md) for the future "Run digest now" button plan once Ovek has app-safe trigger tokens and idempotency.
 
-To verify a specific platform explicitly:
+## PocketBase Collections
 
-```bash
-podman pull --platform linux/amd64 ghcr.io/massivemoose/ovek-signup-example:latest
-```
+Both the app and the workflow idempotently ensure the required collections exist:
 
-```bash
-podman pull --platform linux/arm64 ghcr.io/massivemoose/ovek-signup-example:latest
-```
+- `signups`
+  - `email`
+  - `source`
+- `workflow_results`
+  - `workflow`
+  - `run_id`
+  - `status`
+  - `started_at`
+  - `finished_at`
+  - `total_signups`
+  - `new_signups`
+  - `latest_signup_created_at`
+  - `summary`
 
-Docker uses the same pattern:
-
-```bash
-docker logout ghcr.io
-```
-
-```bash
-docker pull ghcr.io/massivemoose/ovek-signup-example:latest
-```
-
-```bash
-docker pull --platform linux/amd64 ghcr.io/massivemoose/ovek-signup-example:latest
-```
-
-```bash
-docker pull --platform linux/arm64 ghcr.io/massivemoose/ovek-signup-example:latest
-```
+The app creates signup records. The workflow creates `workflow_results` records. The homepage reads the latest 5 workflow results server-side.
 
 ## Local Development
 
 Run PocketBase locally at `http://127.0.0.1:8090`, then provide either `PB_SUPERUSER_TOKEN` or both `PB_SUPERUSER_EMAIL` and `PB_SUPERUSER_PASSWORD`.
 
+Run the app:
+
 ```bash
 PB_SUPERUSER_EMAIL="admin@example.com" \
 PB_SUPERUSER_PASSWORD="your-password" \
-go run ./...
+go run ./cmd/app
 ```
 
-Open:
+Run the digest workflow locally:
 
-```text
-http://localhost:8080
+```bash
+PB_SUPERUSER_EMAIL="admin@example.com" \
+PB_SUPERUSER_PASSWORD="your-password" \
+OVEK_WORKFLOW_RUN_ID="local-test" \
+go run ./cmd/digest
 ```
 
 Run tests:
@@ -162,25 +162,21 @@ Run tests:
 go test ./...
 ```
 
-## Local Container Check
+## Local Container Checks
 
-Build the local image:
-
-```bash
-podman build -t ovek-signup-example:local .
-```
-
-To test a specific published platform locally:
+Build the app image for `linux/amd64`:
 
 ```bash
-podman build --platform linux/amd64 -t ovek-signup-example:local .
+podman build --platform linux/amd64 -t ovek-workflow-example-app:local -f Dockerfile .
 ```
+
+Build the digest image for `linux/amd64`:
 
 ```bash
-podman build --platform linux/arm64 -t ovek-signup-example:local .
+podman build --platform linux/amd64 -t ovek-workflow-example-digest:local -f Dockerfile.workflow .
 ```
 
-Run it against a local PocketBase instance:
+Run the app image against a local PocketBase instance:
 
 ```bash
 podman run --rm -p 8080:8080 \
@@ -188,22 +184,42 @@ podman run --rm -p 8080:8080 \
   -e POCKETBASE_URL=http://host.containers.internal:8090 \
   -e PB_SUPERUSER_EMAIL=<email> \
   -e PB_SUPERUSER_PASSWORD=<password> \
-  ovek-signup-example:local
+  ovek-workflow-example-app:local
 ```
 
-Expected: the app starts, authenticates to PocketBase, ensures the `signups` collection exists, and serves the form at `http://localhost:8080`.
-
-Docker works too:
+Run the digest image against a local PocketBase instance:
 
 ```bash
-docker build -t ovek-signup-example:local .
-```
-
-```bash
-docker run --rm -p 8080:8080 \
-  -e PORT=8080 \
-  -e POCKETBASE_URL=http://host.docker.internal:8090 \
+podman run --rm \
+  -e POCKETBASE_URL=http://host.containers.internal:8090 \
   -e PB_SUPERUSER_EMAIL=<email> \
   -e PB_SUPERUSER_PASSWORD=<password> \
-  ovek-signup-example:local
+  -e OVEK_WORKFLOW_RUN_ID=local-container-test \
+  ovek-workflow-example-digest:local
+```
+
+Docker works too. Use `http://host.docker.internal:8090` for the local PocketBase URL when running on Docker Desktop.
+
+## Publishing
+
+To publish manually:
+
+1. Open the repo on GitHub.
+2. Go to **Actions**.
+3. Run **Publish OCI images to GHCR** from `main`.
+
+After the first publish, make both GHCR packages public in package settings so Ovek servers can pull them without registry credentials.
+
+Verify anonymous pulls:
+
+```bash
+podman logout ghcr.io
+```
+
+```bash
+podman pull ghcr.io/massivemoose/ovek-workflow-example-app:latest
+```
+
+```bash
+podman pull ghcr.io/massivemoose/ovek-workflow-example-digest:latest
 ```
