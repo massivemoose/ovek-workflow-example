@@ -1,4 +1,4 @@
-name: Publish OCI image to GHCR
+name: Publish OCI images to GHCR
 
 on:
   workflow_dispatch:
@@ -10,13 +10,20 @@ permissions:
   contents: read
   packages: write
 
-env:
-  IMAGE_NAME: ghcr.io/massivemoose/ovek-signup-example
-
 jobs:
   publish:
-    name: Build and publish image
+    name: Build and publish ${{ matrix.name }} image
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: app
+            image: ghcr.io/massivemoose/ovek-workflow-example-app
+            dockerfile: ./Dockerfile
+          - name: digest
+            image: ghcr.io/massivemoose/ovek-workflow-example-digest
+            dockerfile: ./Dockerfile.workflow
 
     steps:
       - name: Check out repository
@@ -36,13 +43,13 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ matrix.image }}:latest
+            ${{ matrix.image }}:${{ github.sha }}
           labels: |
-            org.opencontainers.image.source=https://github.com/massivemoose/ovek-signup-example
-          # The Dockerfile is the image recipe; Buildx builds it for amd64 and
-          # arm64, then GHCR stores the resulting OCI-compatible manifest list.
+            org.opencontainers.image.source=https://github.com/massivemoose/ovek-workflow-example
+          # Buildx builds each image for amd64 and arm64, then GHCR stores the
+          # resulting OCI-compatible manifest list.
