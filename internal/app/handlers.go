@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -7,23 +7,42 @@ import (
 	"net/mail"
 	"strings"
 	"time"
+
+	"github.com/massivemoose/ovek-workflow-example/internal/pocketbase"
+	"github.com/massivemoose/ovek-workflow-example/internal/workflow"
 )
 
-func routes(pb *pocketBaseClient) http.Handler {
+type Store interface {
+	CreateSignup(context.Context, string) error
+	ListWorkflowResults(context.Context, int) ([]workflow.WorkflowResult, error)
+}
+
+func Routes(store Store) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", handleHome)
-	mux.HandleFunc("POST /signup", handleSignup(pb))
+	mux.HandleFunc("GET /", handleHome(store))
+	mux.HandleFunc("POST /signup", handleSignup(store))
 	mux.HandleFunc("GET /success", handleSuccess)
 	mux.HandleFunc("GET /failure", handleFailure)
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	return mux
 }
 
-func handleHome(w http.ResponseWriter, r *http.Request) {
-	renderHome(w)
+func handleHome(store Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+
+		results, err := store.ListWorkflowResults(ctx, 5)
+		data := HomeData{WorkflowResults: results}
+		if err != nil {
+			data.ResultsError = "Workflow results are temporarily unavailable."
+		}
+
+		renderHome(w, data)
+	}
 }
 
-func handleSignup(pb *pocketBaseClient) http.HandlerFunc {
+func handleSignup(store Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
 			redirectFailure(w, r, "form")
@@ -39,11 +58,11 @@ func handleSignup(pb *pocketBaseClient) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
-		if err := pb.createSignup(ctx, email); err != nil {
+		if err := store.CreateSignup(ctx, email); err != nil {
 			switch {
-			case errors.Is(err, errEmailAlreadySignedUp):
+			case errors.Is(err, pocketbase.ErrEmailAlreadySignedUp):
 				redirectFailure(w, r, "duplicate")
-			case errors.Is(err, errInvalidEmail):
+			case errors.Is(err, pocketbase.ErrInvalidEmail):
 				redirectFailure(w, r, "invalid")
 			default:
 				redirectFailure(w, r, "save")

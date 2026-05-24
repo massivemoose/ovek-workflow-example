@@ -1,3 +1,3 @@
-module github.com/massivemoose/ovek-signup-example
+module github.com/massivemoose/ovek-workflow-example
 
 go 1.25.5
