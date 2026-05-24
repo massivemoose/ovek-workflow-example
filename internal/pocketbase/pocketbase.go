@@ -295,7 +295,7 @@ func (pb *Client) LatestSuccessfulWorkflowResult(ctx context.Context, workflowNa
 	values := url.Values{}
 	values.Set("page", "1")
 	values.Set("perPage", "1")
-	values.Set("sort", "-finished_at,-created")
+	values.Set("sort", "-finished_at")
 	values.Set("filter", fmt.Sprintf(`workflow = "%s" && status = "succeeded"`, workflowName))
 
 	var list listResponse[workflow.WorkflowResult]
@@ -320,7 +320,7 @@ func (pb *Client) ListWorkflowResults(ctx context.Context, limit int) ([]workflo
 	values := url.Values{}
 	values.Set("page", "1")
 	values.Set("perPage", fmt.Sprint(limit))
-	values.Set("sort", "-finished_at,-created")
+	values.Set("sort", "-finished_at")
 
 	var list listResponse[workflow.WorkflowResult]
 	if err := pb.getList(ctx, token, workflowResultsCollection, values, &list); err != nil {

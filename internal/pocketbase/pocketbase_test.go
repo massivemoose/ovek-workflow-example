@@ -92,6 +92,70 @@ func TestListSignupsDoesNotDependOnPocketBaseSort(t *testing.T) {
 	}
 }
 
+func TestLatestSuccessfulWorkflowResultDoesNotSortByCreated(t *testing.T) {
+	var gotQuery url.Values
+	pb := NewClient(config.Config{
+		PocketBaseURL:  "http://pocketbase.test",
+		SuperuserToken: "test-token",
+	})
+	pb.client = &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			gotQuery = r.URL.Query()
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(bytes.NewBufferString(`{
+					"page":1,
+					"perPage":1,
+					"totalItems":0,
+					"totalPages":0,
+					"items":[]
+				}`)),
+				Header: make(http.Header),
+			}, nil
+		}),
+	}
+
+	if _, err := pb.LatestSuccessfulWorkflowResult(context.Background(), "digest"); err != nil {
+		t.Fatalf("LatestSuccessfulWorkflowResult returned error: %v", err)
+	}
+
+	if got := gotQuery.Get("sort"); got != "-finished_at" {
+		t.Fatalf("sort query = %q, want -finished_at without unsupported -created fallback", got)
+	}
+}
+
+func TestListWorkflowResultsDoesNotSortByCreated(t *testing.T) {
+	var gotQuery url.Values
+	pb := NewClient(config.Config{
+		PocketBaseURL:  "http://pocketbase.test",
+		SuperuserToken: "test-token",
+	})
+	pb.client = &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			gotQuery = r.URL.Query()
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(bytes.NewBufferString(`{
+					"page":1,
+					"perPage":5,
+					"totalItems":0,
+					"totalPages":0,
+					"items":[]
+				}`)),
+				Header: make(http.Header),
+			}, nil
+		}),
+	}
+
+	if _, err := pb.ListWorkflowResults(context.Background(), 5); err != nil {
+		t.Fatalf("ListWorkflowResults returned error: %v", err)
+	}
+
+	if got := gotQuery.Get("sort"); got != "-finished_at" {
+		t.Fatalf("sort query = %q, want -finished_at without unsupported -created fallback", got)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
